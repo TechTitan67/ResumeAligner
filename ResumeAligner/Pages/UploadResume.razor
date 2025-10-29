@@ -1,9 +1,8 @@
 ﻿@page "/upload-resume"
 @inject ProtectedSessionStorage SessionStorage
 @inject WorkspaceService Workspace
-
-@* Debugging: Check if services are injected correctly *@
 @inject ResumeMatcherService Matcher
+
 <p>Matcher loaded: @Matcher != null</p>
 
 <h3>Upload Resume</h3>
@@ -28,55 +27,56 @@ else
     }
 }
 
-@if (!string.IsNullOrEmpty(Workspace.Current.ResumeFileName))
-{
-    <p><strong>Selected file:</strong> @Workspace.Current.ResumeFileName</p>
-}
-
-@if (!string.IsNullOrEmpty(Workspace.Current.ResumeText))
-{
-    <h5 class="mt-3">Resume Preview:</h5>
-    <pre>@Workspace.Current.ResumeText</pre>
-}
-
 @code {
     private bool _isPrerendering = true;
     private bool hasLoadedSession = false;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        Console.WriteLine("OnAfterRenderAsync triggered");                         // Debug logging
+        Console.WriteLine("OnAfterRenderAsync triggered");
 
         if (firstRender)
         {
-            Console.WriteLine("firstRender is TRUE — setting _isPrerendering = false");
+            // Flip prerender flag and return so JS interop (ProtectedSessionStorage) runs only after interactive render
             _isPrerendering = false;
-            StateHasChanged(); // Trigger re-render
+            StateHasChanged();
+            return;
         }
 
         if (!_isPrerendering && !hasLoadedSession)
         {
-            var resumeResult = await SessionStorage.GetAsync<string>("resumeText");
-            var fileResult = await SessionStorage.GetAsync<string>("resumeFileName");
+            try
+            {
+                var resumeResult = await SessionStorage.GetAsync<string>("resumeText");
+                var fileResult = await SessionStorage.GetAsync<string>("resumeFileName");
 
-            // Debug logging
-            if (!resumeResult.Success)
-                Console.WriteLine("No resumeText found in session");
-            if (!fileResult.Success)
-                Console.WriteLine("No resumeFileName found in session");
+                if (!resumeResult.Success)
+                    Console.WriteLine("No resumeText found in session");
+                if (!fileResult.Success)
+                    Console.WriteLine("No resumeFileName found in session");
 
-            Workspace.Current.ResumeText = resumeResult.Success && resumeResult.Value is not null
-                ? resumeResult.Value
-                : string.Empty;
+                Workspace.Current.ResumeText = resumeResult.Success && resumeResult.Value is not null
+                    ? resumeResult.Value
+                    : string.Empty;
 
-            Workspace.Current.ResumeFileName = fileResult.Success && fileResult.Value is not null
-                ? fileResult.Value
-                : string.Empty;
+                Workspace.Current.ResumeFileName = fileResult.Success && fileResult.Value is not null
+                    ? fileResult.Value
+                    : string.Empty;
 
-            Console.WriteLine($"Restored: {Workspace.Current.ResumeFileName}");  // Debug logging
+                Console.WriteLine($"Restored: {Workspace.Current.ResumeFileName}");
 
-            hasLoadedSession = true;
-            StateHasChanged(); // Trigger re-render with restored data
+                hasLoadedSession = true;
+                StateHasChanged();
+            }
+            catch (InvalidOperationException ex)
+            {
+                // JS interop / ProtectedSessionStorage not available — log and avoid terminating the circuit
+                Console.WriteLine($"ProtectedSessionStorage unavailable: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error restoring session: {ex}");
+            }
         }
     }
 
@@ -92,7 +92,16 @@ else
         Workspace.SetResume(text);
         Workspace.SetFileName(fileName);
 
-        await SessionStorage.SetAsync("resumeText", text);
-        await SessionStorage.SetAsync("resumeFileName", fileName);
+        try
+        {
+            await SessionStorage.SetAsync("resumeText", text);
+            await SessionStorage.SetAsync("resumeFileName", fileName);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving to session: {ex}");
+        }
+
+        StateHasChanged();
     }
 }
