@@ -1,21 +1,166 @@
 ﻿@page "/upload-job-description"
+@using Microsoft.AspNetCore.Components.Forms
+@inject HttpClient Http
+@inject ProtectedSessionStorage SessionStorage
 @inject WorkspaceService Workspace
-@inject ResumeMatcherService Matcher
 
 <h3>Upload Job Description</h3>
 
-<InputFile OnChange="HandleFileSelect" />
+<InputFile OnChange="OnInputFileChange" />
+@if (!string.IsNullOrEmpty(fileName))
+{
+    <p><strong>Selected:</strong> @fileName</p>
+}
+@if (!string.IsNullOrEmpty(preview))
+{
+    <h4>Job Description Preview:</h4>
+    <pre class="small">@preview</pre>
+}
 
 @code {
-    private async Task HandleFileSelect(InputFileChangeEventArgs e)
+    private string? fileName;
+    private string? preview;
+    private bool _isPrerendering = true;
+    private bool hasLoadedSession = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _isPrerendering = false;
+            StateHasChanged();
+            return;
+        }
+
+        if (!_isPrerendering && !hasLoadedSession)
+        {
+            var textResult = await SessionStorage.GetAsync<string>("jobDescriptionText");
+            var fileResult = await SessionStorage.GetAsync<string>("jobDescriptionFileName");
+
+            preview = textResult.Success && textResult.Value is not null ? textResult.Value : string.Empty;
+            fileName = fileResult.Success && fileResult.Value is not null ? fileResult.Value : string.Empty;
+
+            if (!string.IsNullOrEmpty(preview))
+            {
+                Workspace.Current.JobDescriptionText = preview;
+            }
+
+            hasLoadedSession = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PersistPreviewAsync()
+    {
+        try
+        {
+            await SessionStorage.SetAsync("jobDescriptionText", preview ?? string.Empty);
+            await SessionStorage.SetAsync("jobDescriptionFileName", fileName ?? string.Empty);
+            Workspace.Current.JobDescriptionText = preview ?? string.Empty;
+        }
+        catch
+        {
+            // ignore storage errors; not critical
+        }
+    }
+
+    private async Task OnInputFileChange(InputFileChangeEventArgs e)
     {
         var file = e.File;
-        using var reader = new StreamReader(file.OpenReadStream(1024 * 1024));
-        var text = await reader.ReadToEndAsync();
-        Workspace.SetJobDescription(text);
+        fileName = file?.Name ?? string.Empty;
+        preview = string.Empty;
 
-        var resumeText = Workspace.Current.ResumeText; // Use the correct property
-        var score = Matcher.CalculateMatchScore(resumeText, text);
-        Workspace.SetMatchScore(score);
+        try
+        {
+            if (file == null)
+            {
+                preview = "No file selected.";
+                await PersistPreviewAsync();
+                return;
+            }
+
+            var ext = System.IO.Path.GetExtension(file.Name).ToLowerInvariant();
+            var contentType = file.ContentType ?? string.Empty;
+
+            // If it's a plain text file, read locally (no server round trip required)
+            if (ext == ".txt" || contentType.StartsWith("text/"))
+            {
+                using var txtStream = file.OpenReadStream(10_000_000);
+                using var reader = new StreamReader(txtStream);
+                preview = await reader.ReadToEndAsync();
+                if (string.IsNullOrWhiteSpace(preview))
+                {
+                    preview = "Selected text file is empty.";
+                }
+
+                await PersistPreviewAsync();
+                return;
+            }
+
+            // Otherwise upload to server for extraction (PDF, DOCX, etc.)
+            using var stream = file.OpenReadStream(10_000_000); // adjust max size as needed
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            using var content = new MultipartFormDataContent();
+            var streamContent = new StreamContent(ms);
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType != string.Empty ? contentType : "application/octet-stream");
+            content.Add(streamContent, "file", file.Name);
+
+            var resp = await Http.PostAsync("api/extract", content);
+            if (!resp.IsSuccessStatusCode)
+            {
+                preview = $"Upload failed: {resp.StatusCode}";
+                await PersistPreviewAsync();
+                return;
+            }
+
+            var respString = await resp.Content.ReadAsStringAsync();
+            var mediaType = resp.Content.Headers.ContentType?.MediaType ?? string.Empty;
+
+            if (mediaType.Contains("json") || respString.TrimStart().StartsWith("{"))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(respString);
+                    string? extracted = null;
+                    if (doc.RootElement.TryGetProperty("preview", out var p) && p.ValueKind == System.Text.Json.JsonValueKind.String)
+                        extracted = p.GetString();
+                    else if (doc.RootElement.TryGetProperty("text", out var t) && t.ValueKind == System.Text.Json.JsonValueKind.String)
+                        extracted = t.GetString();
+                    else if (doc.RootElement.TryGetProperty("extractedText", out var e1) && e1.ValueKind == System.Text.Json.JsonValueKind.String)
+                        extracted = e1.GetString();
+                    else
+                    {
+                        foreach (var prop in doc.RootElement.EnumerateObject())
+                        {
+                            if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                            {
+                                extracted = prop.Value.GetString();
+                                break;
+                            }
+                        }
+                    }
+
+                    preview = !string.IsNullOrEmpty(extracted) ? extracted : respString;
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    preview = string.IsNullOrEmpty(respString) ? "Received invalid JSON from server." : respString;
+                }
+            }
+            else
+            {
+                preview = string.IsNullOrEmpty(respString) ? "No preview returned." : respString;
+            }
+
+            await PersistPreviewAsync();
+        }
+        catch (Exception ex)
+        {
+            preview = $"Error extracting text: {ex.Message}";
+            await PersistPreviewAsync();
+        }
     }
 }
