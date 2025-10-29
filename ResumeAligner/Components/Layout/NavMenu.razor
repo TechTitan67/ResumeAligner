@@ -1,29 +1,29 @@
-﻿<div class="sidebar bg-light vh-100 d-flex flex-column">
-    <div class="navbar navbar-dark bg-dark px-3">
-        <a class="navbar-brand" href="">ResumeAligner</a>
+﻿<div class="sidebar bg-light vh-100 d-flex flex-column" role="navigation" aria-label="Main">
+    <div class="navbar navbar-dark bg-primary px-3">
+        <a class="navbar-brand text-white" href="/">ResumeAligner</a>
     </div>
-    @* Navigation Links *@
+
     <nav class="nav flex-column mt-3">
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+            <NavLink class="nav-link text-dark" href="/" Match="NavLinkMatch.All" ActiveClass="active">
+                <span class="bi bi-house-door-fill" aria-hidden="true"></span> Home
             </NavLink>
         </div>
 
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="/upload-resume">
+            <NavLink class="nav-link text-dark" href="/upload-resume" ActiveClass="active">
                 <span class="oi oi-cloud-upload" aria-hidden="true"></span> Upload Resume
             </NavLink>
         </div>
 
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="/upload-job-description">
+            <NavLink class="nav-link text-dark" href="/upload-job-description" ActiveClass="active">
                 <span class="oi oi-document" aria-hidden="true"></span> Upload Job Description
             </NavLink>
         </div>
 
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="/match-results">
+            <NavLink class="nav-link text-dark" href="/match-results" ActiveClass="active">
                 <span class="oi oi-graph" aria-hidden="true"></span> Match Results
             </NavLink>
         </div>

@@ -1,4 +1,5 @@
 ﻿@page "/upload-resume"
+@inject HttpClient Http
 @inject ProtectedSessionStorage SessionStorage
 @inject WorkspaceService Workspace
 @inject ResumeMatcherService Matcher
@@ -30,14 +31,12 @@ else
 @code {
     private bool _isPrerendering = true;
     private bool hasLoadedSession = false;
+    private const long MaxBinaryBytes = 10 * 1024 * 1024; // 10 MB
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        Console.WriteLine("OnAfterRenderAsync triggered");
-
         if (firstRender)
         {
-            // Flip prerender flag and return so JS interop (ProtectedSessionStorage) runs only after interactive render
             _isPrerendering = false;
             StateHasChanged();
             return;
@@ -45,38 +44,19 @@ else
 
         if (!_isPrerendering && !hasLoadedSession)
         {
-            try
-            {
-                var resumeResult = await SessionStorage.GetAsync<string>("resumeText");
-                var fileResult = await SessionStorage.GetAsync<string>("resumeFileName");
+            var resumeResult = await SessionStorage.GetAsync<string>("resumeText");
+            var fileResult = await SessionStorage.GetAsync<string>("resumeFileName");
 
-                if (!resumeResult.Success)
-                    Console.WriteLine("No resumeText found in session");
-                if (!fileResult.Success)
-                    Console.WriteLine("No resumeFileName found in session");
+            Workspace.Current.ResumeText = resumeResult.Success && resumeResult.Value is not null
+                ? resumeResult.Value
+                : string.Empty;
 
-                Workspace.Current.ResumeText = resumeResult.Success && resumeResult.Value is not null
-                    ? resumeResult.Value
-                    : string.Empty;
+            Workspace.Current.ResumeFileName = fileResult.Success && fileResult.Value is not null
+                ? fileResult.Value
+                : string.Empty;
 
-                Workspace.Current.ResumeFileName = fileResult.Success && fileResult.Value is not null
-                    ? fileResult.Value
-                    : string.Empty;
-
-                Console.WriteLine($"Restored: {Workspace.Current.ResumeFileName}");
-
-                hasLoadedSession = true;
-                StateHasChanged();
-            }
-            catch (InvalidOperationException ex)
-            {
-                // JS interop / ProtectedSessionStorage not available — log and avoid terminating the circuit
-                Console.WriteLine($"ProtectedSessionStorage unavailable: {ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error restoring session: {ex}");
-            }
+            hasLoadedSession = true;
+            StateHasChanged();
         }
     }
 
@@ -84,24 +64,45 @@ else
     {
         var file = e.File;
         var fileName = file.Name;
-        using var reader = new StreamReader(file.OpenReadStream(1024 * 1024));
-        var text = await reader.ReadToEndAsync();
+        var ext = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
 
-        Console.WriteLine("File selected");
-
-        Workspace.SetResume(text);
-        Workspace.SetFileName(fileName);
-
-        try
+        if (ext == ".pdf" || ext == ".docx")
         {
+            // Upload to server for text extraction
+            var content = new MultipartFormDataContent();
+            var stream = file.OpenReadStream(MaxBinaryBytes);
+            var sc = new StreamContent(stream);
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType ?? "application/octet-stream");
+            content.Add(sc, "file", fileName);
+
+            var response = await Http.PostAsync("api/extract", content);
+            if (response.IsSuccessStatusCode)
+            {
+                var payload = await response.Content.ReadFromJsonAsync<ExtractResult>();
+                Workspace.SetFileName(payload?.fileName ?? fileName);
+                Workspace.SetResume(payload?.preview ?? $"No text extracted from {fileName}");
+                await SessionStorage.SetAsync("resumeFileName", Workspace.Current.ResumeFileName);
+                await SessionStorage.SetAsync("resumeText", Workspace.Current.ResumeText);
+            }
+            else
+            {
+                Workspace.SetFileName(fileName);
+                Workspace.SetResume($"Could not extract preview: {response.ReasonPhrase}");
+            }
+        }
+        else
+        {
+            // As before: read known text types client-side
+            using var reader = new System.IO.StreamReader(file.OpenReadStream(2 * 1024 * 1024), System.Text.Encoding.UTF8, true);
+            var text = await reader.ReadToEndAsync();
+            Workspace.SetResume(text);
+            Workspace.SetFileName(fileName);
             await SessionStorage.SetAsync("resumeText", text);
             await SessionStorage.SetAsync("resumeFileName", fileName);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error saving to session: {ex}");
         }
 
         StateHasChanged();
     }
+
+    private record ExtractResult(string preview, string fileName);
 }
