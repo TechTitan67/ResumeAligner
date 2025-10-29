@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System;
+using Microsoft.EntityFrameworkCore;
 using ResumeAligner.Components;
 using ResumeAligner.Data;
 using ResumeAligner.Services;
@@ -16,9 +17,12 @@ namespace ResumeAligner
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(o => o.DetailedErrors = true);
 
-            // Make HttpClient available for component injection
-            builder.Services.AddHttpClient();
-            builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient());
+            // Register a named HttpClient with a BaseAddress and expose a concrete HttpClient for injection
+            builder.Services.AddHttpClient("ResumeAlignerClient", client =>
+            {
+                client.BaseAddress = new Uri(builder.Configuration["AppBaseUrl"] ?? "https://localhost:7081/");
+            });
+            builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("ResumeAlignerClient"));
 
             // Add controllers and text extraction service for binary-file previews
             builder.Services.AddControllers();
