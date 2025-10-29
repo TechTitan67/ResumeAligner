@@ -1,0 +1,21 @@
+﻿@page "/upload-job-description"
+@inject WorkspaceService Workspace
+@inject ResumeMatcherService Matcher
+
+<h3>Upload Job Description</h3>
+
+<InputFile OnChange="HandleFileSelect" />
+
+@code {
+    private async Task HandleFileSelect(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        using var reader = new StreamReader(file.OpenReadStream(1024 * 1024));
+        var text = await reader.ReadToEndAsync();
+        Workspace.SetJobDescription(text);
+
+        var resumeText = Workspace.Current.ResumeText; // Use the correct property
+        var score = Matcher.CalculateMatchScore(resumeText, text);
+        Workspace.SetMatchScore(score);
+    }
+}

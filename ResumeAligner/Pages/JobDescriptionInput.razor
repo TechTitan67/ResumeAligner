@@ -1,0 +1,29 @@
+﻿@page "/job-description-input"
+@inject ResumeAlignerDbContext DbContext
+
+<h3>Job Description Input</h3>
+
+<EditForm Model="@jobModel" OnValidSubmit="HandleSubmit" FormName="JobForm">
+    <InputText @bind-Value="jobModel.Title" class="form-control" placeholder="Job Title" />
+    <InputTextArea @bind-Value="jobModel.DescriptionText" class="form-control mt-2" rows="10" placeholder="Job Description" />
+    <button type="submit" class="btn btn-primary mt-2">Save Job Description</button>
+</EditForm>
+
+@if (successMessage != null)
+{
+    <div class="alert alert-success mt-2">@successMessage</div>
+}
+
+@code {
+    private JobDescription jobModel = new();
+    private string? successMessage;
+
+    private async Task HandleSubmit()
+    {
+        jobModel.CreatedAt = DateTime.UtcNow;
+        DbContext.JobDescriptions.Add(jobModel);
+        await DbContext.SaveChangesAsync();
+        successMessage = "Job description saved successfully!";
+        jobModel = new(); // Reset form
+    }
+}

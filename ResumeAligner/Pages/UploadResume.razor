@@ -1,0 +1,98 @@
+﻿@page "/upload-resume"
+@inject ProtectedSessionStorage SessionStorage
+@inject WorkspaceService Workspace
+
+@* Debugging: Check if services are injected correctly *@
+@inject ResumeMatcherService Matcher
+<p>Matcher loaded: @Matcher != null</p>
+
+<h3>Upload Resume</h3>
+
+@if (_isPrerendering)
+{
+    <p>Initializing resume upload...</p>
+}
+else
+{
+    <InputFile OnChange="HandleFileSelect" />
+
+    @if (!string.IsNullOrEmpty(Workspace.Current.ResumeFileName))
+    {
+        <p><strong>Selected file:</strong> @Workspace.Current.ResumeFileName</p>
+    }
+
+    @if (!string.IsNullOrEmpty(Workspace.Current.ResumeText))
+    {
+        <h5 class="mt-3">Resume Preview:</h5>
+        <pre>@Workspace.Current.ResumeText</pre>
+    }
+}
+
+@if (!string.IsNullOrEmpty(Workspace.Current.ResumeFileName))
+{
+    <p><strong>Selected file:</strong> @Workspace.Current.ResumeFileName</p>
+}
+
+@if (!string.IsNullOrEmpty(Workspace.Current.ResumeText))
+{
+    <h5 class="mt-3">Resume Preview:</h5>
+    <pre>@Workspace.Current.ResumeText</pre>
+}
+
+@code {
+    private bool _isPrerendering = true;
+    private bool hasLoadedSession = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        Console.WriteLine("OnAfterRenderAsync triggered");                         // Debug logging
+
+        if (firstRender)
+        {
+            Console.WriteLine("firstRender is TRUE — setting _isPrerendering = false");
+            _isPrerendering = false;
+            StateHasChanged(); // Trigger re-render
+        }
+
+        if (!_isPrerendering && !hasLoadedSession)
+        {
+            var resumeResult = await SessionStorage.GetAsync<string>("resumeText");
+            var fileResult = await SessionStorage.GetAsync<string>("resumeFileName");
+
+            // Debug logging
+            if (!resumeResult.Success)
+                Console.WriteLine("No resumeText found in session");
+            if (!fileResult.Success)
+                Console.WriteLine("No resumeFileName found in session");
+
+            Workspace.Current.ResumeText = resumeResult.Success && resumeResult.Value is not null
+                ? resumeResult.Value
+                : string.Empty;
+
+            Workspace.Current.ResumeFileName = fileResult.Success && fileResult.Value is not null
+                ? fileResult.Value
+                : string.Empty;
+
+            Console.WriteLine($"Restored: {Workspace.Current.ResumeFileName}");  // Debug logging
+
+            hasLoadedSession = true;
+            StateHasChanged(); // Trigger re-render with restored data
+        }
+    }
+
+    private async Task HandleFileSelect(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        var fileName = file.Name;
+        using var reader = new StreamReader(file.OpenReadStream(1024 * 1024));
+        var text = await reader.ReadToEndAsync();
+
+        Console.WriteLine("File selected");
+
+        Workspace.SetResume(text);
+        Workspace.SetFileName(fileName);
+
+        await SessionStorage.SetAsync("resumeText", text);
+        await SessionStorage.SetAsync("resumeFileName", fileName);
+    }
+}

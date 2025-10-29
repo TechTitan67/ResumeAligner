@@ -1,0 +1,28 @@
+﻿@page "/home"
+
+<h1>Home</h1>
+
+<p>
+    This is the Home page. The route was changed from the root ("/") to "/home" to avoid a conflict with `Index.razor`.
+</p>
+
+<h3>Welcome to <b>ResumeAligner</b></h3>
+
+<p>ResumeAligner helps you tailor your resume to match specific job descriptions — quickly, privately, and intelligently.</p>
+
+<h5>How It Works:</h5>
+<ol>
+    <li><strong>Upload your resume</strong> — ideally in .txt format for now</li>
+    <li><strong>Upload the job description</strong> you’re targeting</li>
+    <li><strong>View your match score</strong> and preview both inputs</li>
+    <li><strong>Download your optimized resume</strong> (coming soon!)</li>
+</ol>
+
+<p>Use the navigation menu or click below to get started:</p>
+
+<button class="btn btn-primary" @onclick="NavigateToUpload">Get Started</button>
+
+@code {
+    [Inject] NavigationManager Nav { get; set; } = default!;
+    private void NavigateToUpload() => Nav.NavigateTo("/upload-resume");
+}

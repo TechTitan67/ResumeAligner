@@ -1,0 +1,54 @@
+﻿using Microsoft.EntityFrameworkCore;
+using ResumeAligner.Components;
+using ResumeAligner.Data;
+using ResumeAligner.Services;
+
+namespace ResumeAligner
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {
+            var builder = WebApplication.CreateBuilder(args);
+
+            // Standard Blazor Server setup
+            builder.Services.AddRazorPages();
+            builder.Services.AddServerSideBlazor();
+
+            builder.Services.AddDbContext<ResumeAlignerDbContext>(options =>
+                options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+            builder.Services.AddScoped<WorkspaceService>();
+            builder.Services.AddHttpContextAccessor();
+            builder.Services.AddScoped<ResumeMatcherService>();
+
+            var app = builder.Build();
+
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseExceptionHandler("/Error");
+                app.UseHsts();
+            }
+
+            app.UseHttpsRedirection();
+            app.UseStaticFiles();
+            app.UseRouting();
+
+            app.Use(async (context, next) =>
+            {
+                Console.WriteLine("Before session middleware");
+                await next.Invoke();
+                Console.WriteLine("After session middleware");
+            });
+
+            app.UseAntiforgery();
+
+            // SignalR endpoint for Blazor Server
+            app.MapBlazorHub();
+
+            // Serve the Razor host page as the fallback — _Host.cshtml is at @page "/_Host"
+            app.MapFallbackToPage("/_Host");
+
+            app.Run();
+        }
+    }
+}

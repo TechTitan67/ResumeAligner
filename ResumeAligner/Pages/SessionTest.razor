@@ -1,0 +1,25 @@
+﻿@page "/session-test"
+@inject IHttpContextAccessor HttpContextAccessor
+
+<h3>Session Test</h3>
+
+<button @onclick="SetSession">Set Session</button>
+<button @onclick="GetSession">Get Session</button>
+
+<p>@message</p>
+
+@code {
+    private string message = "";
+
+    private void SetSession()
+    {
+        HttpContextAccessor.HttpContext?.Session.SetString("testKey", "Hello from session!");
+        message = "Session value set.";
+    }
+
+    private void GetSession()
+    {
+        var value = HttpContextAccessor.HttpContext?.Session.GetString("testKey");
+        message = $"Session value: {value ?? "null"}";
+    }
+}

@@ -1,0 +1,20 @@
+﻿@page "/match-results"
+@inject WorkspaceService Workspace
+
+<h3>Match Results</h3>
+
+@if (!string.IsNullOrWhiteSpace(Workspace.Current.ResumeText) &&
+     !string.IsNullOrWhiteSpace(Workspace.Current.JobDescriptionText))
+{
+    <p><strong>Match Score:</strong> @Workspace.Current.MatchScore%</p>
+
+    <h5>Resume Preview:</h5>
+    <pre>@Workspace.Current.ResumeText</pre>
+
+    <h5>Job Description Preview:</h5>
+    <pre>@Workspace.Current.JobDescriptionText</pre>
+}
+else
+{
+    <p>No data available. Please upload a resume and job description first.</p>
+}
