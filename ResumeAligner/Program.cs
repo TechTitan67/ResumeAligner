@@ -2,6 +2,7 @@
 using ResumeAligner.Components;
 using ResumeAligner.Data;
 using ResumeAligner.Services;
+using System.Net.Http;
 
 namespace ResumeAligner
 {
@@ -14,6 +15,10 @@ namespace ResumeAligner
             // Standard Blazor Server setup
             builder.Services.AddRazorPages();
             builder.Services.AddServerSideBlazor().AddCircuitOptions(o => o.DetailedErrors = true);
+
+            // Make HttpClient available for component injection
+            builder.Services.AddHttpClient();
+            builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient());
 
             // Add controllers and text extraction service for binary-file previews
             builder.Services.AddControllers();
